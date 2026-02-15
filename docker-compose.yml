@@ -1,0 +1,57 @@
+version: "3.9"
+
+services:
+  # Main application (Streamlit UI)
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: evolution-simulator
+    ports:
+      - "8501:8501"
+    volumes:
+      # Mount source for live development (optional: remove for production)
+      - ./src:/app/src
+      - ./config:/app/config
+      - ./tests:/app/tests
+      - ./main.py:/app/main.py
+      # Persist simulation output
+      - ./runs:/app/runs
+    environment:
+      - PYTHONPATH=/app
+    restart: unless-stopped
+
+  # Run tests
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: evolution-simulator-test
+    volumes:
+      - ./src:/app/src
+      - ./config:/app/config
+      - ./tests:/app/tests
+      - ./main.py:/app/main.py
+    environment:
+      - PYTHONPATH=/app
+    entrypoint: ["pytest", "tests/", "-v", "--tb=short"]
+    profiles:
+      - test
+
+  # Headless simulation run (CLI)
+  sim:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: evolution-simulator-run
+    volumes:
+      - ./src:/app/src
+      - ./config:/app/config
+      - ./runs:/app/runs
+      - ./main.py:/app/main.py
+    environment:
+      - PYTHONPATH=/app
+    entrypoint: ["python", "main.py"]
+    # Override command with: docker compose run sim --mode sweep --config config/sweep_config.json
+    profiles:
+      - cli

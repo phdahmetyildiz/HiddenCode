@@ -1,0 +1,92 @@
+{
+  "world": {
+    "width": 500,
+    "height": 500,
+    "seed": 42
+  },
+  "genetics": {
+    "dna_length": 2048,
+    "encoding": "binary",
+    "coding_regions": [[0, 64], [64, 128], [128, 160]],
+    "weight_bits": [0, 32],
+    "speed_bits": [32, 64],
+    "defense_bits": [128, 160],
+    "base_mutation_rate": 0.01,
+    "stress_mutation_rate": 0.20,
+    "stress_mode_coding_only": true
+  },
+  "properties": {
+    "weight_init_range": [0.2, 0.8],
+    "weight_limits": [0.1, 1.0],
+    "speed_init_range": [0.2, 0.8],
+    "speed_limits": [0.1, 1.0],
+    "eyesight_radius": 10
+  },
+  "energy": {
+    "base_metabolism": 0.001,
+    "k_weight_speed": 0.01,
+    "food_gain": 0.2,
+    "max_pitfall_loss_pct": 0.5,
+    "k_defense_cost": 0.0001,
+    "defense_cost_enabled": false,
+    "low_energy_death_threshold": 0.10
+  },
+  "resources": {
+    "food_rate": 5.0,
+    "food_lifespan": 50,
+    "pitfall_rate": 2.0,
+    "pitfall_lifespan": 100,
+    "initial_pitfall_types": [
+      {
+        "name": "A",
+        "sequence": "11110000111100001111000011110000"
+      }
+    ]
+  },
+  "generation": {
+    "gen_length": 1000,
+    "repro_checkpoint_pct": 0.70,
+    "survival_check_pct": 1.00,
+    "bonus_repro_pct": 1.20,
+    "survival_threshold": 0.50,
+    "repro_energy_low": 0.50,
+    "repro_energy_high": 0.75
+  },
+  "population": {
+    "initial_count": 200
+  },
+  "stress": {
+    "trigger_tick": null,
+    "duration_ticks": null,
+    "pitfall_burst_count": 50,
+    "post_event_pitfall_types": [
+      {
+        "name": "B",
+        "sequence": "00001111000011110000111100001111"
+      }
+    ],
+    "food_rate_during_stress": null
+  },
+  "viz": {
+    "mode": "headless",
+    "snapshot_every_gen": true,
+    "realtime_every_n_ticks": 10,
+    "output_dir": "runs"
+  },
+  "sweep": {
+    "runs_per_set": 9,
+    "max_generations": 99,
+    "base_seed": 42,
+    "parallel_workers": 4,
+    "early_termination_on_extinction": true,
+    "stability": {
+      "min_population_pct": 0.20,
+      "max_population_pct": 5.00,
+      "check_after_generation": 10
+    }
+  },
+  "gpu": {
+    "enabled": false,
+    "device_id": 0
+  }
+}

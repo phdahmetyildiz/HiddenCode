@@ -1,0 +1,199 @@
+# Evolution Simulator: Requirements Analysis and Technical Specification
+
+## 1. Document Overview
+### 1.1 Purpose
+This document serves as a comprehensive requirements analysis and technical specification for an evolutionary simulation software project. The goal is to implement a grid-based artificial life simulator to test a hypothesis on stress-induced mutagenesis in evolution. The simulator models a single species of agents ("animals") in a 2D discrete world, subject to resource competition, environmental hazards (pitfalls), and genetic variation. Key focus: Compare adaptation under standard random mutations vs. a triggered hypermutation mechanism during environmental stress events.
+
+The system must be modular, configurable (via JSON files or simple UI), performant for large grids/populations, and extensible for visualization. Implementation language: Python 3.x (preferred for rapid prototyping; libraries like NumPy for grids, Mesa or AgentPy for agent-based modeling optional but recommended to accelerate development).
+
+### 1.2 Scope
+- **In Scope**: Core simulation loop (ticks/steps), agent behaviors (movement, energy management, reproduction), genetics (binary DNA with coding/junk regions), resource spawning (food/pitfalls), user-triggered stress events, data logging, configurable parameters, basic visualization (headless snapshots + optional real-time).
+- **Out of Scope**: Multi-species interactions, advanced AI/pathfinding, 3D rendering, distributed computing, formal statistical analysis tools (but export data for external tools like Pandas/Matplotlib).
+- **Assumptions**: Single run per execution; no real-time multiplayer or cloud integration. Performance target: 500x500 grid with 1000+ agents at 60+ ticks/second on standard hardware.
+
+### 1.3 Key Stakeholders and Use Cases
+- **Primary User**: Researcher testing the theory (e.g., run simulations with/without stress trigger, analyze adaptation speed to new pitfalls).
+- **Use Cases**:
+  - Configure params and run headless sim → export logs/snapshots for post-analysis.
+  - Trigger stress event mid-run (e.g., introduce new pitfalls) → compare population metrics pre/post.
+  - Visualize replay: Browse generational snapshots or real-time frames (throttled for perf).
+
+### 1.4 High-Level Theory Being Tested
+Standard Darwinian evolution (low constant mutation) vs. "built-in" stress-activated hypermutation: Under rapid environmental change (e.g., new pitfalls), mutation rate spikes in coding regions to accelerate adaptation. Metrics: Population survival/recovery time, trait evolution (e.g., defense bits), genetic diversity.
+
+## 2. System Architecture
+### 2.1 High-Level Design
+- **Modular Components**:
+  - **World/Model**: Manages grid, time (ticks), agents, resources (food/pitfalls), events.
+  - **Animal/Agent**: Individual entities with DNA, properties, state (energy, position).
+  - **DNA/Genome**: Binary string handler for inheritance, mutation, property extraction.
+  - **Resources**: Food and Pitfall classes for spawning, decay, interactions.
+  - **Config/Params**: JSON loader for all adjustable values.
+  - **Viz/Logger**: Snapshot exporter (JSON/Pickle), optional real-time renderer (Pygame/Mesa).
+- **Data Flow**:
+  1. Load config → Initialize World with initial agents (random DNA/positions).
+  2. Per tick: Spawn/decay resources → Agents act (energy drain, move, interact) → Check deaths/reproductions.
+  3. At checkpoints (70%/100%/120% gen length): Reproduction.
+  4. User event: Trigger stress (e.g., mutate rates, add pitfalls).
+  5. Log metrics per generation (pop size, avg energy, trait histograms).
+- **Persistence**: Headless runs save snapshots (grid state + agent data) per generation for replay. No full tick-level saves unless enabled (perf hit).
+
+### 2.2 Technical Stack Recommendations
+- **Core**: Python 3.12+, NumPy (grids/arrays), random (seeding for reproducibility).
+- **Agents/Grid**: Mesa (toroidal MultiGrid, scheduler) or pure NumPy list-of-agents.
+- **Viz**: Matplotlib (snapshots/plots), Pygame (real-time optional), or Mesa's browser canvas.
+- **Config**: JSON via `json` stdlib; optional Tkinter/Streamlit UI for param tweaking.
+- **Logging**: CSV/JSON for metrics; Pickle for snapshots.
+- **Perf**: Vectorize where possible (e.g., NumPy for neighbor queries); spatial indexing (e.g., SciPy KDTree) for large eyesight/food searches.
+
+## 3. Core Components
+### 3.1 World (Simulation Environment)
+- **Grid**: 2D toroidal (wrap-around) array, default 500x500 cells (adjustable width/height).
+- **Time**: Discrete ticks (steps); generations = fixed ticks (default 1000, adjustable).
+- **Agents**: List of Animal instances; multiple per cell allowed (no repulsion/penalty).
+- **Resources**:
+  - **Food**: Dict of (x,y) → remaining lifespan (ticks). Fixed energy gain per item (default 0.2 normalized energy, adjustable).
+  - **Pitfalls**: Dict of (x,y) → {letter/type, remaining lifespan, 32-bit sequence}.
+- **Stress Mode**: Boolean flag; set by user event → alters mutation rates, spawns new pitfalls.
+- **Methods**:
+  - `step()`: Advance one tick (spawn/decay, agent actions).
+  - `spawn_food(rate)`: Poisson/binomial random positions (uniform); rate = expected items/step.
+  - `spawn_pitfalls(rate, types)`: Similar; types = list of user-defined sequences.
+  - `nearest_food_in_range(pos, radius)`: Query within eyesight (Manhattan/Euclidean distance).
+  - `pitfall_at(pos)`: Check for active pitfall at position.
+
+### 3.2 Animal (Agent)
+- **Properties** (extracted from DNA, normalized 0-1 unless noted):
+  - Weight: Evolvable, initial uniform [0.2, 0.8], abs limits [0.1, 1.0].
+  - Speed: Evolvable, initial [0.2, 0.8], limits [0.1, 1.0] (affects move distance? Or just energy? → energy only for now).
+  - Energy: Normalized [0,1]; starts at 1.0 for newborns; gain fixed from food.
+  - Eyesight: Fixed radius (default 10 cells, adjustable, no cost/evolution).
+  - Defense: 32-bit sequence (from DNA); counts 1's for optional cost.
+- **State**: Position (x,y), alive (bool), birth_tick (for gen checks).
+- **Methods**:
+  - `step(world)`: Drain energy → Emergency death check → Move → Interact (food/pitfall).
+  - `move_toward(target)`: Greedy step (reduce distance; speed unused for distance, but in energy formula).
+  - `move_random()`: Uniform random direction (8/4 neighbors, toroidal wrap).
+  - `handle_food(world, pos)`: If at food pos and heaviest among arrivals → Consume (gain energy, remove food); ties random.
+  - `handle_pitfall(world, pitfall_seq)`: See Section 4.3.
+  - `reproduce_if_time(tick, gen_length, world)`: See Section 5.
+
+### 3.3 DNA (Genome)
+- **Structure**: List/array of bits (0/1), fixed length (default 2048, adjustable).
+  - **Coding Regions**: User-defined segments (e.g., bits 0-63: weight/speed; 64-127: other props; 128-159: 32-bit defense).
+  - **Junk Regions**: Remainder (neutral; mutate at base rate only).
+  - Defense: Single 32-bit sequence (e.g., bits 128-159); extract as int or bitstring.
+- **Inheritance**: Exact parent copy → Apply mutation.
+- **Mutation**:
+  - Base: Low rate (default 0.01); select N = round(coding_len * rate) random coding bits → Set each to random 0/1 (can match original).
+  - Stress: High rate (default 0.20, user-set); same but only during stress mode (coding only).
+- **Property Extraction**: Bit slice → Integer (0 to 2^bits-1) → Normalize (e.g., / (2^bits-1)).
+- **Methods**:
+  - `copy()`: Duplicate bits.
+  - `mutate(rate, coding_only=True)`: As above.
+  - `get_defense_bits()`: Return 32-bit list/string.
+  - `count_ones_defense()`: Hamming weight of defense bits.
+
+### 3.4 Resources
+- **Food Instance**: Position, lifespan (default 50 ticks, adjustable); on consume: +fixed_energy (default 0.2).
+- **Pitfall Instance**: Position, type (user-defined 32-bit seq, e.g., "A": "11110000111100001111000011110000"), lifespan (default 100 ticks, adjustable).
+
+## 4. Simulation Mechanics
+### 4.1 Main Loop (Per Tick)
+1. Spawn food/pitfalls (user rates; uniform random empty? cells).
+2. Decay lifespans: Remove expired resources.
+3. For each alive agent (synchronous order):
+   - Energy loss: `loss = base_metabolism (default 0.001) + k_weight_speed (default 0.01) * weight * speed`; clamp [0,1].
+   - If energy <=0: Die.
+   - Emergency: If energy < low_threshold (default 0.10) and no food in eyesight: Die.
+   - Move: If food in range → Toward nearest; else random.
+   - Interact: If at food pos → Compete (heaviest wins; remove if eaten).
+   - If at pitfall pos → Handle damage (see 4.3).
+4. Reproduction/death checkpoints: Handled in agent (see 5).
+5. Increment tick; log if gen end.
+
+### 4.2 Movement and Sensing
+- Directions: 8-cardinal (dx,dy in [-1,0,1]).
+- Eyesight: Circular/Manhattan radius; query all cells within (optimize with distance calc).
+- Toroidal: Pos % (width/height).
+
+### 4.3 Pitfall Interaction (New Mechanism)
+- **User Config**: List of pitfall types (each: name, 32-bit binary string). Initial set (start of sim); post-event set (add/replace on stress trigger).
+- **Encounter**: On step into cell with active pitfall:
+  - Compare animal's 32-bit defense (from DNA) vs. pitfall's 32-bit sequence bit-by-bit:
+    - Pitfall bit=0: No effect.
+    - Both 1: Immune (no effect).
+    - Pitfall=1, Animal=0: +1 damage point.
+  - Total damage: 0-32 points.
+- **Energy Loss**: Scaled %: `loss_pct = (damage / 32) * max_pitfall_loss_pct` (default 0.5, adjustable). Subtract from energy (clamp >=0).
+- **Optional Defense Cost**: If enabled (user flag): Add to energy loss formula: `+ k_defense_cost (default 0.0001) * num_ones_in_defense` (per tick, as "maintenance").
+- **Post-Interaction**: Pitfall remains (lifespan unchanged; not consumed).
+
+### 4.4 User-Triggered Stress Events
+- Manual: Via config/script (e.g., at tick X: set stress_mode=True, update pitfall_types list, adjust food_rate, set mut_rate=0.20).
+- Effects: Immediate spawn of new pitfalls; future reproductions use high mut rate (coding only).
+
+## 5. Generations, Reproduction, and Death
+- **Generation Length**: Adjustable ticks (default 1000).
+- **Reproduction Checkpoints**:
+  - Primary: At 70% length (e.g., tick 700).
+  - Secondary: If survives to 120% length (e.g., tick 1200) → Another check.
+- **Offspring Count** (per checkpoint):
+  - Energy < repro_low (default 0.50): 0
+  - < repro_high (default 0.75): 1
+  - >= repro_high: 2
+- **Survival/Death at 100% Length**:
+  - Energy > survival_threshold (default 0.50): Extend life to 120% (else die).
+- **Emergency Death**: As in 4.1 (overrides gen rules).
+- **Offspring Creation**:
+  - DNA: Copy parent → Mutate (base or stress rate).
+  - Energy: 1.0 (full).
+  - Position: Random in 3x3 radius around parent (including parent cell; toroidal).
+- **All Thresholds/Lengths**: Adjustable.
+
+## 6. Configuration and Parameters
+- **Format**: JSON file (e.g., `config.json`); load at startup. Optional UI for editing/runs.
+- **Key Params** (defaults in parens):
+  - World: width(500), height(500).
+  - Genetics: dna_length(2048), coding_regions[list of [start,end]], defense_start(128), defense_bits(32).
+  - Properties: weight_init_range[0.2,0.8], weight_limits[0.1,1.0], similar for speed; eyesight_radius(10).
+  - Energy: base_metabolism(0.001), k_weight_speed(0.01), food_gain(0.2), k_defense_cost(0.0001, optional), max_pitfall_loss_pct(0.5).
+  - Resources: food_rate(5.0/step), food_lifespan(50), pitfall_rate(2.0/step), pitfall_lifespan(100); initial_pitfalls[list of {"name":"A", "seq":"11110000111100001111000011110000"}].
+  - Mutation: base_rate(0.01), stress_rate(0.20).
+  - Generations: gen_length(1000), repro_pct(0.70), survival_threshold(0.50), repro_low(0.50), repro_high(0.75), low_energy_death(0.10).
+  - Viz: mode("headless"), snapshot_every_gen(True), realtime_every_n_ticks(10), seed(42).
+  - Stress: trigger_tick(5000), post_event_pitfalls[list], stress_mode_mut_only_coding(True).
+- **Initial Population**: User-defined count (default 200); random positions, DNA (uniform random bits).
+
+## 7. Visualization and Output
+- **Modes**:
+  - Headless (default): Run in background; save snapshot per generation (JSON: {tick, agents[{pos,energy,weight,...}], resources, metrics}).
+  - Realtime: Optional; render grid (animals as dots sized by weight/color by energy; food green, pitfalls red/icons by type). Throttle: Every N ticks (default 10).
+- **Replay**: Load snapshots → Browser/stepper (Matplotlib animation or simple script: forward/backward frames).
+- **Metrics Logging**: Per generation CSV: pop_size, avg_energy, avg_weight, avg_speed, defense_ones_avg, pop_variance, extinction_flag.
+- **Output Dir**: `./runs/{timestamp}/` with config copy, logs, snapshots.
+
+## 8. Testing, Validation, and Extensions
+### 8.1 Validation
+- Unit Tests: DNA mutation/extraction, energy formulas, toroidal wrap, bit-wise pitfall damage.
+- Integration: Short run (100 ticks, small grid) → Verify pop stable, no crashes.
+- Theory Tests: Run A (no stress): Slow adapt to new pitfalls? Run B (stress trigger): Faster immunity (higher defense 1's matching pitfalls)?
+- Edge Cases: Zero food → Mass death; Max mutation → Diversity explosion; Overlap cells → No issues.
+
+### 8.2 Potential Extensions
+- UI Dashboard: Streamlit for param sweeps/multi-runs.
+- Stats: Built-in plots (pop curves, trait evo).
+- Predation/Coop: Future species.
+- Perf: GPU accel (Numba) for large sims.
+
+### 8.3 Implementation Roadmap
+1. Core Classes (DNA, Animal, World): 1-2 days.
+2. Main Loop + Mechanics: 2-3 days.
+3. Config/JSON + Params: 1 day.
+4. Pitfall/Food Interactions: 1 day.
+5. Reproduction/Gen: 1 day.
+6. Logging/Viz: 2 days.
+7. Stress Events + Tests: 1-2 days.
+Total: ~1-2 weeks for MVP.
+
+This spec captures all discussed features. For questions/clarifications, reference conversation history or iterate via prototypes. Contact for code snippets!

@@ -1,0 +1,24 @@
+{
+  "fixed_params": {
+    "world.width": 200,
+    "world.height": 200,
+    "genetics.dna_length": 2048
+  },
+  "variable_params": {
+    "population.initial_count": [500, 1000, 2500],
+    "energy.food_gain": [0.25, 0.50]
+  },
+  "sweep_settings": {
+    "runs_per_set": 9,
+    "max_generations": 99,
+    "base_seed": 42,
+    "stability_band": {
+      "min_population_pct": 0.20,
+      "max_population_pct": 5.00,
+      "check_after_generation": 10
+    },
+    "early_termination_on_extinction": true,
+    "parallel_workers": 4,
+    "stability_required_pct": 0.66
+  }
+}

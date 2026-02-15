@@ -1,0 +1,25 @@
+# Core
+numpy>=1.26.0,<2.0.0
+scipy>=1.12.0,<2.0.0
+pandas>=2.2.0,<3.0.0
+
+# UI
+streamlit>=1.40.0,<2.0.0
+plotly>=5.22.0,<6.0.0
+matplotlib>=3.9.0,<4.0.0
+
+# Testing
+pytest>=8.0.0,<9.0.0
+pytest-cov>=5.0.0,<6.0.0
+
+# Logging / Serialization
+orjson>=3.10.0,<4.0.0
+
+# Parallel processing (stdlib multiprocessing used, no extra dep)
+
+# Optional GPU acceleration (uncomment if NVIDIA GPU available)
+# cupy-cuda12x>=13.0.0
+# numba>=0.60.0
+
+# Video export (future)
+# opencv-python>=4.10.0
