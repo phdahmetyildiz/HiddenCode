@@ -21,26 +21,28 @@ Question: does stress-activated mutation speed adaptation (defense vs new pitfal
 
 - Tick loop, energy, movement, food, pitfalls
 - Binary DNA, coding vs junk, mutation (base and stress)
-- **Overlapping generations** with reproduction checkpoints
-- **Biological aging** (mobility, food absorption, hard max age)
+- **Overlapping generations** with **per-animal** fertility (age window, not a global clock)
+- **Biological aging**: full adult performance until `onset`, then decline, then hard max age
 - Emergency death, starvation, pitfall death, max-age death
-- Headless CLI, JSON config, per-generation CSV, optional snapshots
-- Parameter sweep (multiple configs × seeds)
+- Headless CLI, JSON config, periodic CSV, optional snapshots
+- **Watch UI** (local window: grid + live stats, pause/step/speed)
+- Parameter sweep (local process pool and cluster job files)
+- Optional CUDA kernels with automatic CPU fallback
 - Livability budget printed before a run
 
 ### 1.3 Out of scope (v3 first build)
 
-- UI / web dashboard
-- GPU kernels (design allows them later)
-- Splitting one world across multiple machines
+- Splitting one world across many machines
 - Multi-species, pathfinding, 3D, video export
+- Porting the v2 Streamlit app
 
 ### 1.4 Compatibility with v2
 
 Same **scientific rules** where they still make sense. **Not** bit-identical to v2 runs:
 
 - Tick order is synchronous (not shuffled per-agent)
-- Aging is new
+- Aging is new (plateau, then decline)
+- Reproduction is per-animal age, not 70%/120% world checkpoints
 - Default world is smaller and denser
 - Speed gene affects movement, not only metabolism
 
@@ -72,7 +74,7 @@ Chosen so animals can actually see food. Scale up only after population holds.
 | pitfall_rate | **0.5** / tick | 2.0 |
 | seed | 42 | 42 |
 
-**Livability check (required):** before `run()`, compute and print (or log) expected drain, expected food per animal if evenly shared, ticks-to-emergency with zero food, food density vs eyesight area. Warn if ticks-to-emergency < 0.5 × first reproduction tick.
+**Livability check (required):** before `run()`, compute and print (or log) expected drain, expected food per animal if evenly shared, ticks-to-emergency with zero food, food density vs eyesight area. Warn if ticks-to-emergency < 0.5 × `repro_age_min`.
 
 ---
 
@@ -88,7 +90,9 @@ Per animal (conceptually; stored as arrays in code):
 | dna | Fixed-length bit genome |
 | weight, speed | Phenotype from DNA, cached until mutation (offspring only) |
 | birth_tick | Tick of birth |
-| generation | Generation index of birth (informational) |
+| repro_age | Age (ticks) at which this animal will attempt its one clutch |
+| has_reproduced | True after the fertility tick has fired (even if 0 offspring) |
+| cohort | Metrics-epoch index at birth (informational; not a biological generation) |
 | alive | Bool |
 
 **Age** (ticks) = `current_tick - birth_tick`. Computed, not stored twice.
@@ -100,7 +104,12 @@ Initial DNA is random bits. Weight/speed: map raw `[0,1]` DNA decode into **init
 ## 4. DNA
 
 - Length default **2048** bits.
-- Coding regions (default): `[0,64)` reserved (weight+speed), `[64,128)` reserved, `[128,160)` defense (32 bits).
+- Coding regions (default):
+  - `[0, 32)` weight
+  - `[32, 64)` speed
+  - `[64, 96)` **fertility timing** (maps to `repro_age` in `[repro_age_min, repro_age_max]`)
+  - `[96, 128)` reserved
+  - `[128, 160)` defense (32 bits)
 - Rest is junk.
 - Encoding: `binary` (default) or `gray`.
 - Mutation: pick `N = round(region_len * rate)` random bits in the allowed region(s), set each to random 0/1 (silent mutations allowed).
@@ -132,7 +141,7 @@ gain = food_gain * food_absorption(age)
 energy = clamp(energy + gain, 0, 1)
 ```
 
-`food_absorption(age)` is in §7. Young animals get the full `food_gain`.
+`food_absorption(age)` is in §7. Until `aging.onset`, this multiplier is **exactly 1.0** — a 200-tick animal and a 500-tick animal get the **same** energy from a meal.
 
 ### 5.3 Starvation
 
@@ -184,85 +193,122 @@ Ties at a food cell are still resolved by **weight** (heaviest eats; random amon
 
 v2 did **not** implement aging. `Animal.age` returned 0. Death cause `"age"` meant “failed the 100% generation energy check.”
 
-v3 aging is biological and continuous.
+v3 aging is a **plateau then decline**, not a slope from birth.
 
-### 7.1 Parameters
+### 7.1 Plateau (this is the important part)
 
-| Name | Default | Meaning |
-|---|---|---|
-| `aging.max_age` | **1800** ticks | Hard death, any energy |
-| `aging.onset` | **800** ticks | No senescence before this |
-| `aging.mobility_end` | **0.05** | Mobility at `max_age` (just before death) |
-| `aging.absorption_end` | **0.20** | Food absorption at `max_age` |
-| `aging.curve` | `"linear"` | Interpolation from onset → max_age |
-
-Constraints: `0 <= onset < max_age`. `mobility_end` and `absorption_end` in `[0, 1]`.
-
-### 7.2 Curves
-
-Let `age = current_tick - birth_tick`.
-
-If `age >= max_age`: die, cause `max_age` (checked at start of animal phase, before drain).
-
-If `age <= onset`:
+Until `aging.onset` (default **1000** ticks of *this animal’s* age):
 
 ```
 age_mobility = 1.0
 food_absorption = 1.0
 ```
 
-If `onset < age < max_age`:
+So **a 200-tick animal and a 500-tick animal get the same energy from food** and the same mobility. Nothing declines in between.
+
+Only **after** onset does food energy (and mobility) start falling.
+
+### 7.2 Parameters
+
+| Name | Default | Meaning |
+|---|---|---|
+| `aging.onset` | **1000** ticks | Full performance until this age (inclusive) |
+| `aging.max_age` | **1800** ticks | Hard death, any energy |
+| `aging.mobility_end` | **0.05** | Mobility just before `max_age` |
+| `aging.absorption_end` | **0.20** | Food absorption just before `max_age` |
+| `aging.curve` | `"linear"` | Shape **only on the interval (onset, max_age)** |
+
+Constraints: `0 <= onset < max_age`. End values in `[0, 1]`.
+
+### 7.3 Curves
+
+Let `age = current_tick - birth_tick`.
+
+If `age >= max_age`: die, cause `max_age` (start of animal phase, before drain).
+
+If `age <= onset`: full performance (§7.1).
+
+If `onset < age < max_age` and `curve == "linear"`:
 
 ```
-t = (age - onset) / (max_age - onset)   # 0 → 1
+t = (age - onset) / (max_age - onset)   # 0 → 1 after onset only
 age_mobility     = 1.0 + t * (mobility_end - 1.0)
 food_absorption  = 1.0 + t * (absorption_end - 1.0)
 ```
 
-Linear is the v3 default. `curve: "quadratic"` may be added later (`t^2`) without changing the rest of the spec.
+`curve: "quadratic"` (`t^2`) may be added later; it still does **not** apply before onset.
 
-### 7.3 Why this removes old animals
+Worked example (defaults):
 
-They do not need a special “generation cull” to vanish:
+| Animal age | food_absorption | Notes |
+|---|---|---|
+| 200 | **1.00** | Adult plateau |
+| 500 | **1.00** | Same meal energy as age 200 |
+| 1000 | **1.00** | Last tick of full strength |
+| 1400 | **0.60** | Halfway from 1000→1800 toward 0.20 |
+| 1799 | **~0.20** | Frail |
+| 1800 | dead | `max_age` |
 
-- They skip more moves → miss food.
-- They get less energy per meal.
-- Drain continues (weight × speed still apply).
-- Emergency death can finish them if energy falls below 0.10 with no food in sight.
-- If they still live, `max_age` kills them.
+### 7.4 Why this removes old animals
 
-Typical lifetime with defaults: useful adult ~ ticks 0–800, decline 800–1800, gone by 1800. They can hit the 70% checkpoint of a 1000-tick generation clock (~tick 700 of *world* time is not the same as age 700 — each animal has its own age). Generation checkpoints are **world-clock** events; age is **per animal**.
+After onset they skip more moves, get less per meal, still pay metabolism, may hit emergency death, then `max_age`.
 
-### 7.4 Generation 100% energy cull (optional)
+Default life: adult 0–1000, decline 1000–1800, gone at 1800.
 
-v2 killed everyone with `energy <= survival_threshold` at 100% of `gen_length`.
+The fertility window is **[700, 1100]** (§8). That **overlaps** the first 100 ticks of senescence: an animal that breeds at 750 is at full strength; one that breeds at 1050 is slightly weaker. To keep every clutch at full absorption, set `onset >= repro_age_max` (e.g. 1100).
 
-v3: **`generation.survival_cull_enabled: false` by default.** Aging is the intended removal of old/weak animals. The cull can be enabled for experiments.
+### 7.5 Optional energy cull
 
-If enabled: at the survival checkpoint, `energy <= survival_threshold` → die, cause `cull` (not `age`, to avoid mixing with `max_age`).
+v2 killed everyone with `energy <= survival_threshold` on a global 100% checkpoint.
+
+v3: **`metrics.cull_enabled: false` by default.** If enabled, at the end of each metrics epoch, `energy <= survival_threshold` → die, cause `cull`.
 
 ---
 
 ## 8. Overlapping generations and reproduction
 
-Generations **overlap**. Parents are not replaced by children. Children are added. Parents keep living until they die of starvation, emergency, pitfall, max_age, or optional cull.
+Parents are **not** replaced. Children are added. Parents keep living until starvation, emergency, pitfall, `max_age`, or optional cull.
 
-### 8.1 World generation clock
+There is **no** global “everyone reproduces at world tick 700.” Fertility is a property of **the animal’s own age**.
 
-A **generation cycle** is a world-time window, not an animal’s lifetime.
+### 8.1 One clutch per lifetime
 
-| Event | Default | Tick offset from cycle start |
-|---|---|---|
-| Primary reproduction | 70% of `gen_length` | 700 if `gen_length=1000` |
-| Optional survival cull | 100% | 1000 |
-| Bonus reproduction | 120% | 1200 |
-| Cycle advances | after bonus | `gen_start = now` |
+Each animal attempts reproduction **once**, when:
 
-`gen_length` default 1000. All percentages configurable.
+```
+age == repro_age
+and has_reproduced == false
+and alive
+```
 
-After bonus reproduction, generation index increments, cycle restarts. Animals already alive keep their `birth_tick` and age.
+After that tick, `has_reproduced = true` even if energy was too low for offspring.
 
-### 8.2 Offspring count (per alive animal, at a repro checkpoint)
+If they die before `repro_age`, they leave no descendants.
+
+### 8.2 When: a range, not a fixed age
+
+Config window (defaults match your example):
+
+| Name | Default |
+|---|---|
+| `reproduction.repro_age_min` | **700** |
+| `reproduction.repro_age_max` | **1100** |
+
+`repro_age` is an integer in that closed interval.
+
+**`timing: "genetic"` (default).** Bits `[64, 96)` decode to `[0, 1]`, then:
+
+```
+repro_age = repro_age_min + round(raw * (repro_age_max - repro_age_min))
+```
+
+Random genomes in generation 0 therefore **spread** across 700–1100. Timing can evolve.
+
+**`timing: "random"`.** At birth, draw `repro_age` uniformly in the window (independent of DNA). Stored on the animal; not heritable.
+
+### 8.3 Offspring count (energy at the fertility tick)
+
+Evaluated **after** that tick’s drain / eat / pitfall:
 
 ```
 energy < repro_energy_low   → 0     # default 0.50
@@ -270,17 +316,30 @@ energy < repro_energy_high  → 1     # default 0.75
 else                        → 2
 ```
 
-### 8.3 Offspring
+### 8.4 Offspring state
 
 - DNA: copy + mutate (stress rate if stress mode, else base).
 - Energy: 1.0.
 - Position: uniform in 3×3 around parent, toroidal (including parent cell).
-- `birth_tick`: current tick.
-- `generation`: current world generation index + 1 (child of this cycle).
+- `birth_tick`: current world tick.
+- Own `repro_age`: from their DNA (`genetic`) or a new draw (`random`).
+- `has_reproduced`: false.
+- `cohort`: current metrics-epoch index.
 
-Parents do **not** lose energy from reproducing (v2 behavior, kept unless we decide otherwise later).
+Parents do **not** lose energy from reproducing.
 
-Reproduction uses energy **after** that tick’s drain/eat/pitfall (checkpoint runs at end of tick).
+### 8.5 Metrics epochs (logging only)
+
+v2 mixed “generation” with reproduction checkpoints. v3 splits them:
+
+- **Biology:** per-animal `repro_age`.
+- **Logging:** every `metrics.interval` ticks (default **1000**) write one CSV row and optional snapshot. Increment `cohort` for animals born in the next interval.
+
+Optional cull, if enabled, runs at epoch end — not as a substitute for aging.
+
+### 8.6 Overlap in time
+
+Animals born at different world ticks hit 700–1100 at different times. Several overlapping age classes live and breed on the same map. That is the intended overlapping-generations model.
 
 ---
 
@@ -340,23 +399,26 @@ Synchronous. No per-agent shuffle.
 9. **Eat** (heaviest per food cell).
 10. **Pitfalls** (all animals on pitfall cells).
 11. **Starvation/pitfall deaths** from post-interact energy.
-12. **Generation checkpoints** if this tick matches (repro / optional cull / bonus / advance).
-13. **Stress** auto trigger/deactivate.
-14. Increment tick. Callbacks/metrics as configured.
+12. **Reproduction:** every alive animal with `age == repro_age` and not yet `has_reproduced` produces 0/1/2 offspring; set `has_reproduced`.
+13. **Metrics epoch** if `tick % interval == 0` (CSV, optional cull, optional snapshot).
+14. **Stress** auto trigger/deactivate.
+15. Increment tick. Watch-UI callback if attached.
 
 Deterministic given config + seed (one RNG stream).
 
 ---
 
-## 11. Metrics (per generation cycle end)
+## 11. Metrics (end of each metrics epoch)
 
-Keep v2 KPIs, and add:
+Keep v2 KPIs that still apply, and add:
 
 | KPI | Meaning |
 |---|---|
 | deaths_max_age | Hard age cap |
-| deaths_cull | Optional 100% energy cull |
+| deaths_cull | Optional epoch cull |
 | deaths_emergency | Unchanged |
+| births_count | Offspring created this epoch |
+| avg_repro_age | Mean `repro_age` of living animals (evolving trait) |
 | avg_age, median_age, max_age_alive | Of living animals |
 | avg_mobility, avg_food_absorption | Age modifiers of living |
 | avg_move_probability | `speed * age_mobility` |
@@ -365,23 +427,40 @@ Death cause `"age"` from v2 is **not** used. Use `max_age` and `cull`.
 
 ---
 
-## 12. Output and CLI
+## 12. Output, CLI, and watch UI
 
 - Output: `runs/{timestamp}/` with copied config, `metrics.csv`, optional snapshots.
-- CLI (first build): `--config`, `--mode single|sweep`, `--seed`, `--max-generations`, `--headless` (always headless for now).
-- Sweep: Cartesian product of variable params × `runs_per_set` seeds. Stability band as in v2. Parallel processes on local CPU first.
+- CLI:
+  - `python main.py budget --config ...`
+  - `python main.py run --config ... --seed ... --max-ticks ...` (headless)
+  - `python main.py watch --config ...` (live window)
+  - `python main.py sweep --sweep-config ...`
+- Sweep: Cartesian product × seeds; local process pool first.
+
+### 12.1 Watch mode (first build)
+
+Purpose: **see** what is happening — not a research dashboard.
+
+- Local window (default toolkit: **Pygame**; can be swapped later).
+- Grid: animals (color = energy, size = weight), food (green), pitfalls (red).
+- HUD: tick, alive, mean energy, births/deaths this epoch, stress on/off.
+- Controls: pause, step one tick, speed (and render every N ticks so the sim can run faster than the display).
+- The engine does not import the viewer. `watch` runs ticks and asks the viewer to draw. Sweeps stay headless.
+
+Optional soon after: replay a `runs/` folder from snapshots with a tick slider.
 
 ---
 
 ## 13. Validation (minimum)
 
-- Aging: at `onset` mobility=1; just below `max_age` mobility ≈ `mobility_end`; at `max_age` death regardless of energy=1.0.
-- Food absorption multiplies gain; a young vs old animal on the same food get different energy.
-- Move skip: mobility 0 → never moves (force via config in tests).
-- Emergency: energy 0.05, no food in range → dead; food in range → lives.
-- Overlap: after primary repro, `alive = parents + children` (parents still present).
-- Torus wrap, pitfall bitwise damage, mutation coding-only, determinism (same seed → same metrics).
-- Livability: default config survives **at least 10 generation cycles** without extinction in a smoke test (not necessarily all seeds — document the seed used).
+- Aging plateau: `food_absorption(200) == food_absorption(500) == food_absorption(onset) == 1.0`.
+- After onset: absorption decreases; just below `max_age` ≈ `absorption_end`.
+- `max_age`: energy 1.0 still dies, cause `max_age`.
+- Genetic timing: all-zero fertility bits → `repro_age_min`; all-one → `repro_age_max`.
+- Animal with `repro_age=70` on a short test clock produces children at age 70; parent still alive.
+- Energy 0.4 at fertility tick → 0 offspring but `has_reproduced` true (no second chance).
+- Emergency, torus, pitfall bits, coding-only mutation, same-seed determinism.
+- Livability smoke: default config, seed 42, at least 10 metrics epochs, not extinct.
 
 ---
 
@@ -391,8 +470,8 @@ See also `config/default_config.json` when it is added. New block:
 
 ```json
 "aging": {
+  "onset": 1000,
   "max_age": 1800,
-  "onset": 800,
   "mobility_end": 0.05,
   "absorption_end": 0.20,
   "curve": "linear"
@@ -400,14 +479,19 @@ See also `config/default_config.json` when it is added. New block:
 ```
 
 ```json
-"generation": {
-  "gen_length": 1000,
-  "repro_checkpoint_pct": 0.70,
-  "survival_check_pct": 1.00,
-  "bonus_repro_pct": 1.20,
-  "survival_threshold": 0.50,
-  "survival_cull_enabled": false,
+"reproduction": {
+  "timing": "genetic",
+  "repro_age_min": 700,
+  "repro_age_max": 1100,
   "repro_energy_low": 0.50,
   "repro_energy_high": 0.75
+}
+```
+
+```json
+"metrics": {
+  "interval": 1000,
+  "cull_enabled": false,
+  "survival_threshold": 0.50
 }
 ```

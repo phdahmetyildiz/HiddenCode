@@ -2,7 +2,7 @@
 
 Array-based rewrite of the HiddenCode evolution simulator.
 
-**Status:** design review (no simulation code yet)  
+**Status:** Phases 1–11 complete. Default world stays alive; local sweep, Numba/CUDA backends, and cluster job files work.  
 **Branch:** `v3`  
 **Parent:** v2 on `main` (Python objects, Streamlit UI, Phases 1–10)
 
@@ -10,9 +10,10 @@ This folder is a **new codebase**, not a patch of `src/`. v2 stays on `main` for
 
 ## Read these in order
 
-1. [TECHNICAL_SPEC.md](TECHNICAL_SPEC.md) — rules of the world (what must be true)
-2. [ARCHITECTURE.md](ARCHITECTURE.md) — how it is built (CPU/GPU, arrays, distribution)
-3. [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) — phased build order and tests
+1. [HOWTO.md](HOWTO.md) — run commands, watch keys, which settings to change
+2. [TECHNICAL_SPEC.md](TECHNICAL_SPEC.md) — rules of the world (what must be true)
+3. [ARCHITECTURE.md](ARCHITECTURE.md) — how it is built (CPU/GPU, arrays, distribution)
+4. [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) — phased build order and tests
 
 ## Scientific goal (unchanged)
 
@@ -27,10 +28,11 @@ v2 collapsed on default (and most) configs. The inner loop was one Python object
 v3 goals:
 
 1. **Livable default world** — population can persist for many overlapping generations.
-2. **True aging** — old animals slow down, absorb less food, then hit a hard max age.
-3. **Performance** — NumPy/Numba arrays, not per-agent Python objects.
-4. **Honest rules** — synchronous ticks (perceive → move → interact → resolve).
-5. **Headless first** — CLI + CSV. UI later, if at all.
+2. **True aging** — full adult life, then senescence (slower, less food), then a hard max age.
+3. **Age-based reproduction** — one clutch per animal in a fertility window (not a global alarm clock).
+4. **Performance** — NumPy/Numba arrays, not per-agent Python objects.
+5. **Honest rules** — synchronous ticks (perceive → move → interact → resolve).
+6. **Watch a run** — local viewer so you can see the grid and stats; headless CLI still exists for sweeps.
 
 ## What changed vs v2 (summary)
 
@@ -38,30 +40,45 @@ v3 goals:
 |---|---|---|
 | Inner loop | One `Animal` object, Python `for` | Structure of Arrays (NumPy) |
 | Tick order | Shuffled, one agent at a time | Synchronous phases |
-| Aging | Stub (`age` always 0). “Age death” = energy cull at 100% of generation | Senescence (mobility + food absorption) + hard max age |
+| Aging | Stub (`age` always 0). “Age death” = energy cull at 100% of generation | Full food/mobility until `onset` (default **1000**), then linear decline, then hard `max_age` |
+| Reproduction | Everyone on the same world-clock (70% / 120% of gen length) | Each animal once, at an age in **[700, 1100]** (genetic, or random) |
 | Speed gene | Energy cost only; does not affect movement | Energy cost **and** move chance (tradeoff) |
 | Default world | 500×500, 200 agents (unlivable) | Small dense world first; scale after it holds |
-| UI | Streamlit | None in the first build |
-| GPU | Stub | Optional later; CPU is the default path |
+| UI | Streamlit (config/sweep, weak live grid) | Local **watch** window (pause/step/speed) + headless CLI |
+| GPU | Stub | Optional CUDA kernels; falls back to Numba then NumPy |
 
 ## GPU and servers (short answer)
 
 - **Python + NumPy is CPU.** The large speedup vs v2 comes from arrays + Numba on the CPU, not from a GPU.
-- **GPU is optional later** for large populations (DNA bitwise ops, energy, some distance work). It is not automatic and not required to start.
-- **Many independent runs** (parameter sweeps) scale well across many CPUs or machines. Design for that from day one.
-- **One world split across many servers** is a different, much harder problem. Not in v3.
+- **GPU is optional.** Set `perf.backend` to `"cuda"` (or `"numba_cuda"`). If there is no NVIDIA GPU, the engine falls back to Numba, then NumPy.
+- **Many independent runs** scale across processes (`sweep`) or machines (`export-jobs` / `run-job` / `merge-sweep`).
+- **One world split across many servers** is out of scope.
 
 Details: [ARCHITECTURE.md](ARCHITECTURE.md) §4–5.
 
-## Open questions for review
+## Design choices (locked)
 
-Please confirm or correct these before implementation:
+1. Aging onset = 1000, then linear decline; ages 200 and 500 get identical full food energy.
+2. One clutch per life at a genetically encoded age in [700, 1100].
+3. Offspring count 0/1/2 from energy — kept.
+4. Late breeders overlapping senescence are OK.
+5. Watch UI via Pygame; engine stays UI-agnostic.
 
-1. **Aging curves** in the spec (onset, max age, linear decline of mobility and food absorption).
-2. **100% generation energy cull** — v3 default **off** (aging + emergency + starvation already remove weak animals). Can be turned on.
-3. **Genetic speed affects move probability** so “getting slower” is a real competitive disadvantage. If you want speed to stay cost-only, say so.
-4. **Default small world** sizes in the spec.
+## How to use
 
-## License / authorship
+**Local Python from this `v3/` folder** — not Docker (the root Dockerfile is v2/Streamlit).
 
-Same project as v2. Implementation starts only after this design review.
+Full commands, watch keys, and which JSON knobs do what: **[HOWTO.md](HOWTO.md)**.
+
+```
+cd v3
+pip install -r requirements.txt
+python main.py budget
+python main.py run --max-epochs 10
+python main.py watch
+python main.py sweep --sweep-config config/sweep_template.json
+python -m pytest
+```
+
+Copy `config/default_config.json` before experiments. After changing food, grid size, or metabolism, run `budget` first. Set `perf.backend` to `"numba"` for faster runs.
+

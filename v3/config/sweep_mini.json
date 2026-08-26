@@ -1,0 +1,31 @@
+{
+  "fixed_params": {
+    "world.width": 24,
+    "world.height": 24,
+    "metrics.interval": 25,
+    "resources.pitfall_rate": 0.0,
+    "viz.snapshot_every_epoch": false,
+    "aging.onset": 80,
+    "aging.max_age": 200,
+    "reproduction.repro_age_min": 20,
+    "reproduction.repro_age_max": 40,
+    "perf.max_animals": 400,
+    "energy.low_energy_death_threshold": 0.02
+  },
+  "variable_params": {
+    "population.initial_count": [8, 12],
+    "resources.food_rate": [4.0, 8.0]
+  },
+  "sweep_settings": {
+    "runs_per_set": 2,
+    "max_epochs": 2,
+    "base_seed": 42,
+    "stability_band": {
+      "min_population_pct": 0.10,
+      "max_population_pct": 20.0,
+      "check_after_epoch": 0
+    },
+    "early_termination_on_extinction": true,
+    "parallel_workers": 2
+  }
+}
