@@ -1,4 +1,8 @@
-"""Aging plateau, spatial torus, feeding/emergency/repro."""
+"""
+Aging plateau, spatial torus, feeding/emergency/repro.
+
+Author: Cursor Grok 4.6 High Fast
+"""
 
 import numpy as np
 import pytest

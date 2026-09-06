@@ -4,6 +4,8 @@ Implement **after** review of [TECHNICAL_SPEC.md](TECHNICAL_SPEC.md) and [ARCHIT
 
 Do not import v2 `src.*`. New package under `v3/`.
 
+**Authorship:** when you create a `v3` Python source file, put `Author: <your model name>` on the last line of the module docstring. When you substantially change an existing file, keep the original `Author:` and append `Edited on <date> by <your model name>` beneath it (do not replace). Do not stamp JSON configs. See [AGENTS.md](AGENTS.md) and [ARCHITECTURE.md](ARCHITECTURE.md) §2.1.
+
 ---
 
 ## 0. Review gates (before coding)

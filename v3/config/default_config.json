@@ -1,7 +1,7 @@
 {
   "world": {
-    "width": 80,
-    "height": 80,
+    "width": 200,
+    "height": 200,
     "seed": 42
   },
   "genetics": {
@@ -27,16 +27,16 @@
     "base_metabolism": 0.001,
     "k_weight_speed": 0.01,
     "food_gain": 0.2,
-    "max_pitfall_loss_pct": 0.5,
+    "max_pitfall_loss_pct": 1.0, 
     "k_defense_cost": 0.0001,
     "defense_cost_enabled": false,
-    "low_energy_death_threshold": 0.10
+    "low_energy_death_threshold": 0.02 
   },
   "resources": {
-    "food_rate": 4.0,
+    "food_rate": 25.0, 
     "food_lifespan": 50,
-    "pitfall_rate": 0.5,
-    "pitfall_lifespan": 100,
+    "pitfall_rate": 8.0, 
+    "pitfall_lifespan": 200, 
     "initial_pitfall_types": [
       {
         "name": "A",

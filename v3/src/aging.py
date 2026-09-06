@@ -1,4 +1,8 @@
-"""Age mobility and food-absorption curves: plateau until onset, then decline."""
+"""
+Age mobility and food-absorption curves: plateau until onset, then decline.
+
+Author: Cursor Grok 4.6 High Fast
+"""
 
 from __future__ import annotations
 

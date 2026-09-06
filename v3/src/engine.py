@@ -1,4 +1,8 @@
-"""Synchronous tick engine for Evolution Simulator v3."""
+"""
+Synchronous tick engine for Evolution Simulator v3.
+
+Author: Cursor Grok 4.6 High Fast
+"""
 
 from __future__ import annotations
 
@@ -8,6 +12,7 @@ from typing import Callable, Optional
 import numpy as np
 from numpy.typing import NDArray
 
+from src.adaptation import encounter_adaptation
 from src.aging import age_curves
 from src.config import SimConfig
 from src import kernels
@@ -32,6 +37,7 @@ class TickStats:
     pitfall_encounters: int = 0
     pitfall_total_damage: int = 0
     pitfall_zero_damage: int = 0
+    pitfall_adapt_sum: float = 0.0
     deaths_starvation: int = 0
     deaths_emergency: int = 0
     deaths_pitfall: int = 0
@@ -64,6 +70,8 @@ class SimulationEngine:
         self.stress = StressManager(self.config)
         self.tick_stats = TickStats()
         self.epoch_counters = TickStats()
+        self.lifetime = TickStats()
+        self.adaptation_series: list[float] = []
         self.epochs_completed = 0
         self.epoch_history: list[EpochMetrics] = []
         self.on_epoch: Optional[Callable[[EpochMetrics, "SimulationEngine"], None]] = None
@@ -108,6 +116,24 @@ class SimulationEngine:
             self.tick_stats.deaths_cull += removed
             self.epoch_counters.deaths_cull += removed
         return removed
+
+    def _accumulate(self, dst: TickStats, src: TickStats) -> None:
+        dst.food_spawned += src.food_spawned
+        dst.food_expired += src.food_expired
+        dst.food_eaten += src.food_eaten
+        dst.pitfalls_spawned += src.pitfalls_spawned
+        dst.pitfalls_expired += src.pitfalls_expired
+        dst.pitfall_encounters += src.pitfall_encounters
+        dst.pitfall_total_damage += src.pitfall_total_damage
+        dst.pitfall_zero_damage += src.pitfall_zero_damage
+        dst.pitfall_adapt_sum += src.pitfall_adapt_sum
+        dst.deaths_starvation += src.deaths_starvation
+        dst.deaths_emergency += src.deaths_emergency
+        dst.deaths_pitfall += src.deaths_pitfall
+        dst.deaths_max_age += src.deaths_max_age
+        dst.deaths_cull += src.deaths_cull
+        dst.births += src.births
+        dst.births_skipped += src.births_skipped
 
     def tick(self) -> TickStats:
         self.tick_stats = TickStats()
@@ -217,6 +243,14 @@ class SimulationEngine:
         if self.on_tick is not None:
             self.on_tick(w.tick, self)
 
+        self._accumulate(self.lifetime, self.tick_stats)
+        if w.tick % 10 == 0:
+            enc = self.lifetime.pitfall_encounters
+            mean = (
+                self.lifetime.pitfall_adapt_sum / enc if enc > 0 else float("nan")
+            )
+            self.adaptation_series.append(mean)
+
         _ = event
         return self.tick_stats
 
@@ -258,12 +292,18 @@ class SimulationEngine:
         defense = w.defense[:n][idx]
         hit = seq & (~defense)
         damage = popcount32(hit)
-        self.tick_stats.pitfall_encounters += int(idx.size)
+        scores = encounter_adaptation(seq, defense)
+        n_enc = int(idx.size)
+        adapt_sum = float(scores.sum())
+        zero = int(np.count_nonzero(damage == 0))
+        self.tick_stats.pitfall_encounters += n_enc
         self.tick_stats.pitfall_total_damage += int(damage.sum())
-        self.tick_stats.pitfall_zero_damage += int(np.count_nonzero(damage == 0))
-        self.epoch_counters.pitfall_encounters += int(idx.size)
+        self.tick_stats.pitfall_zero_damage += zero
+        self.tick_stats.pitfall_adapt_sum += adapt_sum
+        self.epoch_counters.pitfall_encounters += n_enc
         self.epoch_counters.pitfall_total_damage += int(damage.sum())
-        self.epoch_counters.pitfall_zero_damage += int(np.count_nonzero(damage == 0))
+        self.epoch_counters.pitfall_zero_damage += zero
+        self.epoch_counters.pitfall_adapt_sum += adapt_sum
         loss = (damage.astype(np.float32) / 32.0) * self.config.energy.max_pitfall_loss_pct
         # Deaths from this blow are tagged pitfall if they hit 0
         energy_before = w.energy[idx].copy()

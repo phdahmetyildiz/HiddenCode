@@ -1,4 +1,8 @@
-"""World: SoA animals + dense food/pitfall grids."""
+"""
+World: SoA animals + dense food/pitfall grids.
+
+Author: Cursor Grok 4.6 High Fast
+"""
 
 from __future__ import annotations
 
@@ -41,8 +45,10 @@ class World:
         self.food_life = np.zeros((self.width, self.height), dtype=np.int32)
         self.pitfall_life = np.zeros((self.width, self.height), dtype=np.int32)
         self.pitfall_seq = np.zeros((self.width, self.height), dtype=np.uint32)
+        self.pitfall_type_id = np.full((self.width, self.height), -1, dtype=np.int16)
 
         self.active_pitfall_types: list[PitfallType] = config.resources.get_pitfall_types()
+        self.pitfall_type_registry: list[PitfallType] = list(self.active_pitfall_types)
         self.births_skipped = 0
 
     @property
@@ -59,6 +65,20 @@ class World:
     def food_positions(self) -> tuple[NDArray[np.int32], NDArray[np.int32]]:
         xs, ys = np.nonzero(self.food_life > 0)
         return xs.astype(np.int32), ys.astype(np.int32)
+
+    def register_pitfall_type(self, pt: PitfallType) -> int:
+        for i, existing in enumerate(self.pitfall_type_registry):
+            if existing.name == pt.name:
+                return i
+        self.pitfall_type_registry.append(pt)
+        return len(self.pitfall_type_registry) - 1
+
+    def pitfall_counts_by_name(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        live = self.pitfall_life > 0
+        for i, pt in enumerate(self.pitfall_type_registry):
+            counts[pt.name] = int(np.count_nonzero(live & (self.pitfall_type_id == i)))
+        return counts
 
     def pitfall_positions(self) -> tuple[NDArray[np.int32], NDArray[np.int32]]:
         xs, ys = np.nonzero(self.pitfall_life > 0)
@@ -156,6 +176,7 @@ class World:
                 pt = types[int(self.rng.integers(0, n_types))]
                 self.pitfall_life[x, y] = life
                 self.pitfall_seq[x, y] = np.uint32(pt.as_uint32())
+                self.pitfall_type_id[x, y] = self.register_pitfall_type(pt)
                 spawned += 1
         return spawned
 
@@ -167,6 +188,7 @@ class World:
         food_expired = int(np.count_nonzero(food_was & (self.food_life == 0)))
         pit_expired = int(np.count_nonzero(pit_was & (self.pitfall_life == 0)))
         self.pitfall_seq[self.pitfall_life == 0] = 0
+        self.pitfall_type_id[self.pitfall_life == 0] = -1
         return food_expired, pit_expired
 
     def compact(self, keep: NDArray[np.bool_]) -> int:

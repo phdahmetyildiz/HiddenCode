@@ -1,4 +1,8 @@
-"""Per-animal one-clutch reproduction."""
+"""
+Per-animal one-clutch reproduction.
+
+Author: Cursor Grok 4.6 High Fast
+"""
 
 from __future__ import annotations
 

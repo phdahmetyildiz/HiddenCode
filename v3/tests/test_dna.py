@@ -1,4 +1,8 @@
-"""Encoding + packed DNA."""
+"""
+Encoding + packed DNA.
+
+Author: Cursor Grok 4.6 High Fast
+"""
 
 import numpy as np
 

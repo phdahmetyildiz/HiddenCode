@@ -1,4 +1,8 @@
-"""Toroidal grid math (vectorized where it matters)."""
+"""
+Toroidal grid math (vectorized where it matters).
+
+Author: Cursor Grok 4.6 High Fast
+"""
 
 from __future__ import annotations
 

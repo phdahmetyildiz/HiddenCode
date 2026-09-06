@@ -14,6 +14,7 @@ This folder is a **new codebase**, not a patch of `src/`. v2 stays on `main` for
 2. [TECHNICAL_SPEC.md](TECHNICAL_SPEC.md) — rules of the world (what must be true)
 3. [ARCHITECTURE.md](ARCHITECTURE.md) — how it is built (CPU/GPU, arrays, distribution)
 4. [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) — phased build order and tests
+5. [AGENTS.md](AGENTS.md) — conventions for future coding agents (including authorship)
 
 ## Scientific goal (unchanged)
 
@@ -51,7 +52,7 @@ v3 goals:
 
 - **Python + NumPy is CPU.** The large speedup vs v2 comes from arrays + Numba on the CPU, not from a GPU.
 - **GPU is optional.** Set `perf.backend` to `"cuda"` (or `"numba_cuda"`). If there is no NVIDIA GPU, the engine falls back to Numba, then NumPy.
-- **Many independent runs** scale across processes (`sweep`) or machines (`export-jobs` / `run-job` / `merge-sweep`).
+- **Many independent runs** scale across processes (`sweep`, and `study` for re-seeded replicates from a checkpoint) or machines (`export-jobs` / `run-job` / `merge-sweep`, `merge-study`).
 - **One world split across many servers** is out of scope.
 
 Details: [ARCHITECTURE.md](ARCHITECTURE.md) §4–5.
@@ -66,19 +67,29 @@ Details: [ARCHITECTURE.md](ARCHITECTURE.md) §4–5.
 
 ## How to use
 
-**Local Python from this `v3/` folder** — not Docker (the root Dockerfile is v2/Streamlit).
-
-Full commands, watch keys, and which JSON knobs do what: **[HOWTO.md](HOWTO.md)**.
+**Local Python + `v3/.venv`** — not Docker (the root Dockerfile is v2/Streamlit). Details: **[HOWTO.md](HOWTO.md)**.
 
 ```
 cd v3
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 python main.py budget
+python main.py studio
+python main.py study
 python main.py run --max-epochs 10
 python main.py watch
-python main.py sweep --sweep-config config/sweep_template.json
-python -m pytest
 ```
 
 Copy `config/default_config.json` before experiments. After changing food, grid size, or metabolism, run `budget` first. Set `perf.backend` to `"numba"` for faster runs.
+
+## Authorship (for agents)
+
+Every Python source file under `v3/` (`src/`, `tests/`, `main.py`) must name its author in the module docstring:
+
+```
+Author: <model name>
+```
+
+If you **create** a source file, write **yourself** as that author (your model name, not a previous agent's). If you **substantially change** an existing file, keep the original `Author:` line and append `Edited on <date> by <your model name>` beneath it. JSON configs and generated run output are not stamped. Details: [AGENTS.md](AGENTS.md).
 

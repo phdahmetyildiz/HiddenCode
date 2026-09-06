@@ -1,4 +1,8 @@
-"""Parameter sweep tests."""
+"""
+Parameter sweep tests.
+
+Author: Cursor Grok 4.6 High Fast
+"""
 
 import json
 from pathlib import Path

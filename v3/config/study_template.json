@@ -1,0 +1,22 @@
+{
+  "name": "stress_vs_baseline",
+  "origin_path": "saves/REPLACE_WITH_CHECKPOINT_FOLDER",
+  "origin_kind": "checkpoint",
+  "arms": [
+    { "label": "Baseline", "overrides": {} },
+    { "label": "Stress ON", "overrides": { "stress.trigger_tick": 0 } },
+    { "label": "Stress + high mutation", "overrides": { "stress.trigger_tick": 0, "genetics.stress_mutation_rate": 0.4 } }
+  ],
+  "replicates_per_arm": 20,
+  "max_epochs": 20,
+  "base_seed": 1234,
+  "random_base_seed": false,
+  "burn_in_epochs": 0,
+  "compare_metric": "adaptation_score",
+  "bootstrap": true,
+  "n_bootstrap": 2000,
+  "quantiles": [0.1, 0.9],
+  "workers": null,
+  "early_stop_all_extinct": true,
+  "save_end_checkpoints": false
+}

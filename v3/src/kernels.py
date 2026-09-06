@@ -9,6 +9,8 @@ Backends:
 Call `resolve_and_set(requested)` once per engine. Kernels are deterministic
 for drain / popcount / nearest_food / age_curves given the same inputs.
 Move RNG stays on the host (NumPy Generator) so seeds still match on CPU.
+
+Author: Cursor Grok 4.6 High Fast
 """
 
 from __future__ import annotations

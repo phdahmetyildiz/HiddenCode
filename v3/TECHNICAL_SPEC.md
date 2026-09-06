@@ -4,6 +4,8 @@ This document is the **rules of the simulation**. If architecture and this spec 
 
 v2 `technical_spec.txt` remains the historical source. This file is the v3 contract.
 
+Coding conventions for agents (authorship on source files, not this spec): [AGENTS.md](AGENTS.md).
+
 ---
 
 ## 1. Purpose and scope
@@ -366,6 +368,16 @@ pitfall 1, def 0  → +1 damage
 ```
 energy_loss = (damage / 32) * max_pitfall_loss_pct   # default 0.5
 ```
+
+**Adaptation score** (logged and shown in watch) is the same bit test, as a fraction of *dangerous* bits only:
+
+```
+need    = popcount(seq)              # pitfall 1-bits
+covered = popcount(seq & defense)    # those bits the animal also has
+score   = covered / need             # 1.0 if need is 0
+```
+
+So score `1.0` means every threatening bit is blocked (damage `0` on those bits). Score `0.0` means none are. Pitfall `0`-bits never hurt and do not count toward the score. The headline number is the **mean score over encounters** (each animal standing on a pitfall cell, each tick). `full` is the share of those encounters with score `1.0`.
 
 - Pitfall not consumed.
 - If energy hits 0 from this hit: death cause `pitfall`.

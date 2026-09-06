@@ -45,10 +45,23 @@ v3/
     watch.py           # Pygame grid viewer; imports engine, not vice versa
     logging_io.py      # run dir, CSV, snapshots
   tests/
-  main.py              # CLI: budget | run | watch | sweep | bench | export-jobs | run-job | merge-sweep
+    study.py           # scientific batch runs: re-seeded replicates from a checkpoint, arms, aggregation
+    study_gui.py       # Tkinter study GUI (imports study + plots, not vice versa)
+    plots.py           # numpy/Tk + optional matplotlib figures for study results
+  main.py              # CLI: budget | run | watch | studio | study | study-run | sweep | bench | export-jobs | run-job | merge-sweep | merge-study
 ```
 
 Watch mode is part of the first build. The viewer must not sit in the hot path. Do not import v2 `src.*` from v3.
+
+### 2.1 Authorship (for agents)
+
+Every Python source file in this tree (`src/`, `tests/`, `main.py`) names its author as the last line of the module docstring:
+
+```
+Author: Cursor Grok 4.6 High Fast
+```
+
+If you **create** a source file, that line is your model name. If you **substantially change** an existing file, keep the original `Author:` and append `Edited on <date> by <your model name>` beneath it (one line per contributor; update your own date rather than duplicating). Comment-only files use `# Author: …` / `# Edited on <date> by …`. Do not stamp JSON configs or generated run/save output. Same rule: [AGENTS.md](AGENTS.md), [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md), `.cursor/rules/v3-authorship.mdc`.
 
 ---
 
@@ -163,6 +176,8 @@ v3 will:
 - Not require MPI.
 
 Cluster runner: `export-jobs` writes a shared config + `jobs.jsonl`; each worker runs `run-job --index N`; `merge-sweep` rebuilds CSVs. Ray, Dask, SLURM array, or a GitHub Actions matrix can call the same CLI because jobs do not talk to each other.
+
+Studies (`src/study.py`): a study loads one checkpoint as a common start, then runs `replicates_per_arm` re-seeded copies per arm across a process pool sized to `os.cpu_count()`. The crux is re-seeding: `load_checkpoint` restores the saved RNG, so each replicate rebinds `engine.rng` **and** `engine.world.rng` to a fresh `default_rng(seed)` to get a divergent future from the identical state; seeds are `base_seed + arm*10000 + replicate` for exact replay. Only epochs produced after the start are kept, so all replicates share the common origin and diverge. Aggregation is numpy-only (mean/CI, bootstrap, quantiles, survival, permutation test, Cohen's d). Output nests under the origin checkpoint at `saves/<ckpt>/studies/<ts>_<name>/` with a scientific `report.json`. The GUI runs the pool on a background thread and marshals progress to Tk via a queue; `merge-study` re-aggregates replicate JSONs from a cluster.
 
 **This is the path to “hundreds of CPUs.”** It is straightforward if we keep the engine free of global state (no process-wide animal id counter without passing it in; v2 had a global `_next_animal_id`).
 

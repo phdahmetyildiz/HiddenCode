@@ -1,4 +1,8 @@
-"""Kernel backends: numpy vs numba parity; CUDA skipped if no GPU."""
+"""
+Kernel backends: numpy vs numba parity; CUDA skipped if no GPU.
+
+Author: Cursor Grok 4.6 High Fast
+"""
 
 import numpy as np
 import pytest

@@ -2,6 +2,8 @@
 Parameter sweep: independent (config, seed) jobs, local process pool.
 
 Each job is a pure function. No shared engine state.
+
+Author: Cursor Grok 4.6 High Fast
 """
 
 from __future__ import annotations

@@ -1,4 +1,8 @@
-"""Per-metrics-epoch KPIs."""
+"""
+Per-metrics-epoch KPIs.
+
+Author: Cursor Grok 4.6 High Fast
+"""
 
 from __future__ import annotations
 
@@ -49,6 +53,8 @@ class EpochMetrics:
     pitfall_encounters: int = 0
     pitfall_avg_damage: float = 0.0
     pitfall_zero_damage: int = 0
+    adaptation_score: float = 0.0
+    adapted_frac: float = 0.0
     stress_mode_active: bool = False
     mutation_rate_effective: float = 0.0
 
@@ -75,6 +81,8 @@ def collect_epoch(world: World, counters, epoch: int) -> EpochMetrics:
     m.pitfall_zero_damage = counters.pitfall_zero_damage
     if counters.pitfall_encounters > 0:
         m.pitfall_avg_damage = counters.pitfall_total_damage / counters.pitfall_encounters
+        m.adaptation_score = counters.pitfall_adapt_sum / counters.pitfall_encounters
+        m.adapted_frac = counters.pitfall_zero_damage / counters.pitfall_encounters
     m.stress_mode_active = world.stress_mode
     g = world.config.genetics
     m.mutation_rate_effective = g.stress_mutation_rate if world.stress_mode else g.base_mutation_rate

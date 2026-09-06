@@ -1,0 +1,25 @@
+{
+  "name": "mutation_rate_under_stress",
+  "origin_path": "config/default_config.json",
+  "origin_kind": "config",
+  "arms": [
+    { "label": "no stress (A)", "overrides": {} },
+    { "label": "stress mut=0.01", "overrides": { "stress.trigger_tick": 1, "genetics.stress_mutation_rate": 0.01 } },
+    { "label": "stress mut=0.05", "overrides": { "stress.trigger_tick": 1, "genetics.stress_mutation_rate": 0.05 } },
+    { "label": "stress mut=0.10", "overrides": { "stress.trigger_tick": 1, "genetics.stress_mutation_rate": 0.10 } },
+    { "label": "stress mut=0.20", "overrides": { "stress.trigger_tick": 1, "genetics.stress_mutation_rate": 0.20 } },
+    { "label": "stress mut=0.40", "overrides": { "stress.trigger_tick": 1, "genetics.stress_mutation_rate": 0.40 } }
+  ],
+  "replicates_per_arm": 10,
+  "max_epochs": 10,
+  "base_seed": 1234,
+  "random_base_seed": false,
+  "burn_in_epochs": 1,
+  "compare_metric": "adaptation_score",
+  "bootstrap": true,
+  "n_bootstrap": 2000,
+  "quantiles": [0.1, 0.9],
+  "workers": null,
+  "early_stop_all_extinct": true,
+  "save_end_checkpoints": false
+}

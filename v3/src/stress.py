@@ -1,4 +1,8 @@
-"""Stress mode: mutation rate, pitfall burst, optional food rate."""
+"""
+Stress mode: mutation rate, pitfall burst, optional food rate.
+
+Author: Cursor Grok 4.6 High Fast
+"""
 
 from __future__ import annotations
 

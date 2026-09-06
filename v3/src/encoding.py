@@ -1,4 +1,8 @@
-"""Binary / Gray encoding helpers for packed and unpacked bit slices."""
+"""
+Binary / Gray encoding helpers for packed and unpacked bit slices.
+
+Author: Cursor Grok 4.6 High Fast
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,8 @@
-"""Tick-rate benchmarks for default / medium / large worlds."""
+"""
+Tick-rate benchmarks for default / medium / large worlds.
+
+Author: Cursor Grok 4.6 High Fast
+"""
 
 from __future__ import annotations
 

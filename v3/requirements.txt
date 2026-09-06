@@ -5,5 +5,11 @@ numba>=0.64.0
 # Watch UI (optional; `python main.py watch`)
 pygame>=2.5.0,<3.0.0
 
+# Study tool extras (optional). Without them the study tool still works:
+# plots fall back to a built-in PNG writer, and comparisons use a numpy
+# permutation test instead of a Welch t-test.
+# matplotlib>=3.7.0   # labelled study plots
+# scipy>=1.10.0       # adds Welch t-test to arm comparisons
+
 # Testing
 pytest>=8.0.0,<9.0.0

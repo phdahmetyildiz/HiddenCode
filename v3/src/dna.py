@@ -1,4 +1,8 @@
-"""Packed binary genomes: uint64 words, bit index 0 = LSB of word 0."""
+"""
+Packed binary genomes: uint64 words, bit index 0 = LSB of word 0.
+
+Author: Cursor Grok 4.6 High Fast
+"""
 
 from __future__ import annotations
 

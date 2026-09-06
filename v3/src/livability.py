@@ -1,4 +1,8 @@
-"""Pre-run energy / foraging budget. No simulation required."""
+"""
+Pre-run energy / foraging budget. No simulation required.
+
+Author: Cursor Grok 4.6 High Fast
+"""
 
 from __future__ import annotations
 

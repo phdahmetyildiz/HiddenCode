@@ -3,6 +3,8 @@ Simulation configuration for Evolution Simulator v3.
 
 Nested dataclasses, JSON load/save, validation, dotted-key overrides.
 Does not import v2 `src.*`.
+
+Author: Cursor Grok 4.6 High Fast
 """
 
 from __future__ import annotations

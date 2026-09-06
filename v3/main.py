@@ -1,4 +1,9 @@
-"""CLI for Evolution Simulator v3: budget, run, watch, sweep, bench, cluster jobs."""
+"""
+CLI for Evolution Simulator v3: budget, run, watch, sweep, bench, study, cluster jobs.
+
+Author: Cursor Grok 4.6 High Fast
+Edited on 2026-09-05 by Cursor Claude Opus 4.8 High
+"""
 
 from __future__ import annotations
 
@@ -185,6 +190,69 @@ def cmd_merge_sweep(args: argparse.Namespace) -> None:
     print(f"Output: {dest}")
 
 
+def cmd_study(args: argparse.Namespace) -> None:
+    from src.study_gui import run_study_gui
+
+    run_study_gui(saves_dir=args.saves_dir, config_path=args.config)
+
+
+def cmd_study_run(args: argparse.Namespace) -> None:
+    from src.study import Study, StudySpec, export_results, study_output_dir
+
+    spec = StudySpec.from_file(args.study_config)
+    if args.workers is not None:
+        spec.workers = args.workers
+    study = Study(spec)
+    print(
+        f"Study '{spec.name}': {len(spec.arms)} arm(s) x {spec.replicates_per_arm} "
+        f"replicates = {study.total_replicates} runs "
+        f"(workers={spec.resolved_workers()}, max_epochs={spec.max_epochs}, base_seed={spec.base_seed})"
+    )
+
+    def progress(done: int, total: int) -> None:
+        print(f"  {done}/{total} replicates", flush=True)
+
+    dest = Path(args.output_dir) if args.output_dir else study_output_dir(spec)
+    end_ckpt = (dest / "end_states") if spec.save_end_checkpoints else None
+    result = study.run(progress_callback=progress, end_ckpt_dir=end_ckpt)
+    paths = export_results(result, dest)
+    print(f"Elapsed {result.elapsed_seconds:.1f}s")
+    print(f"Output: {dest}")
+    report = (dest / "report.txt")
+    if report.exists():
+        print("\n" + report.read_text(encoding="utf-8"))
+    for kind, path in paths.items():
+        print(f"  {kind}: {Path(path).name}")
+
+
+def cmd_merge_study(args: argparse.Namespace) -> None:
+    from src.study import StudySpec, aggregate_existing, export_results, load_replicate_results
+
+    spec = StudySpec.from_file(args.study_config)
+    reps = load_replicate_results(args.results_dir)
+    if not reps:
+        raise SystemExit(f"No replicate result files in {args.results_dir}")
+    result = aggregate_existing(spec, reps)
+    dest = Path(args.output_dir)
+    paths = export_results(result, dest)
+    print(f"Merged {len(reps)} replicates across {len(result.arms)} arm(s)")
+    print(f"Output: {dest}")
+    report = (dest / "report.txt")
+    if report.exists():
+        print("\n" + report.read_text(encoding="utf-8"))
+
+
+def cmd_studio(args: argparse.Namespace) -> None:
+    config = _load(args.config)
+    from src.studio import run_studio
+
+    cfg_path = args.config
+    if cfg_path is None:
+        default = Path(__file__).resolve().parent / "config" / "default_config.json"
+        cfg_path = str(default) if default.exists() else None
+    run_studio(config, config_path=cfg_path, saves_dir=args.saves_dir)
+
+
 def cmd_watch(args: argparse.Namespace) -> None:
     config = _load(args.config)
     if args.seed is not None:
@@ -211,10 +279,32 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--strict-livability", action="store_true")
     r.set_defaults(func=cmd_run)
 
+    g = sub.add_parser("studio", help="Control GUI: results, optional grid, save/load states")
+    g.add_argument("--config", default=None)
+    g.add_argument("--saves-dir", default="saves")
+    g.set_defaults(func=cmd_studio)
+
     w = sub.add_parser("watch", help="Live grid window")
     w.add_argument("--config", default=None)
     w.add_argument("--seed", type=int, default=None)
     w.set_defaults(func=cmd_watch)
+
+    st = sub.add_parser("study", help="Scientific batch-run GUI (replicates from a checkpoint)")
+    st.add_argument("--config", default=None, help="Optional base config for config-origin studies")
+    st.add_argument("--saves-dir", default="saves")
+    st.set_defaults(func=cmd_study)
+
+    sr = sub.add_parser("study-run", help="Headless: run a study from a study-config JSON")
+    sr.add_argument("--study-config", required=True)
+    sr.add_argument("--output-dir", default=None, help="Default: under the origin checkpoint")
+    sr.add_argument("--workers", type=int, default=None)
+    sr.set_defaults(func=cmd_study_run)
+
+    ms = sub.add_parser("merge-study", help="Aggregate replicate result JSONs into a study report")
+    ms.add_argument("--study-config", required=True)
+    ms.add_argument("--results-dir", required=True, help="Dir with replicates.jsonl or *.json results")
+    ms.add_argument("--output-dir", required=True)
+    ms.set_defaults(func=cmd_merge_study)
 
     s = sub.add_parser("sweep", help="Parameter sweep (local process pool)")
     s.add_argument("--sweep-config", default=None, help="Sweep JSON (default: config/sweep_template.json)")

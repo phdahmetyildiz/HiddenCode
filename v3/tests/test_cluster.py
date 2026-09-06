@@ -1,4 +1,8 @@
-"""Cluster job bundle + merge (Phase 11)."""
+"""
+Cluster job bundle + merge (Phase 11).
+
+Author: Cursor Grok 4.6 High Fast
+"""
 
 import json
 from pathlib import Path

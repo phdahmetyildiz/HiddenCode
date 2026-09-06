@@ -36,6 +36,7 @@ docker-compose.override.yml
 # === Project ===
 # Simulation output (regeneratable, can be large)
 runs/
+saves/
 
 # Environment variables
 .env
@@ -46,6 +47,9 @@ runs/
 *.tmp
 *.temp
 .cache/
+
+# Microsoft Office lock/owner files (e.g. ~$METHODS.docx)
+~$*
 
 # Numba JIT cache
 *.nbc
